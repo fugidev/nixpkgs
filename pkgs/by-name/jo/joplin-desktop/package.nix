@@ -14,6 +14,7 @@
   pixman,
   libsecret,
   electron,
+  # node-gyp,
 }:
 
 let
@@ -27,15 +28,18 @@ stdenv.mkDerivation (finalAttrs: {
   src = fetchFromGitHub {
     owner = "laurent22";
     repo = "joplin";
-    rev = "refs/tags/v${finalAttrs.version}";
+    tag = "v${finalAttrs.version}";
     hash = "sha256-DDHUBtIjzeFL/iMaHDniOSLS3Y8Mwcp6BuHc+w/u8Ic=";
+    # postFetch = ''
+    #   rm -r $out/packages/{app-mobile,app-clipper,server,doc-builder,onenote-converter}
+    # '';
   };
 
   missingHashes = ./missing-hashes.json;
 
   offlineCache = yarn-berry.fetchYarnBerryDeps {
-    inherit (finalAttrs) src missingHashes;
-    hash = "sha256-obMlkN2Ajq7UetAPTdRjzT/BkJSYQP74uP35dowWprA=";
+    inherit (finalAttrs) src missingHashes postPatch;
+    hash = "sha256-3THkd6uGr/813/m+QPOrye32QakSeWDHjBgZBz8RrYw=";
   };
 
   nativeBuildInputs = [
@@ -49,22 +53,34 @@ stdenv.mkDerivation (finalAttrs: {
     pixman
     libsecret
     makeWrapper
+    # node-gyp
   ]
   # ++ lib.optionals stdenv.hostPlatform.isDarwin [ xcbuild ]
   ++ lib.optionals stdenv.hostPlatform.isLinux [ copyDesktopItems ];
 
   env = {
-    BUILD_SEQUENCIAL = 1;
     YARN_ENABLE_SCRIPTS = 0;
     ELECTRON_SKIP_BINARY_DOWNLOAD = 1;
   };
 
   postPatch = ''
+    rm -r packages/{app-mobile,app-clipper,app-cli,server,doc-builder,onenote-converter}
+    cp ${./yarn.lock} yarn.lock
     sed -i "/'buildDefaultPlugins',/d" packages/app-desktop/gulpfile.ts
+    # Fix: Build error due to removal of app-mobile
+    sed -i '/app-mobile\//d' packages/tools/gulp/tasks/buildScriptIndexes.js
+    # sed -i "s/jetify/true/" packages/app-mobile/package.json
   '';
 
   buildPhase = ''
     runHook preBuild
+
+    unset YARN_ENABLE_SCRIPTS
+
+    patchShebangs packages/app-desktop/node_modules
+
+    # yarn rebuild
+    YARN_IGNORE_PATH=1 yarn install --inline-builds
 
     yarn workspaces foreach \
       --verbose \
@@ -96,10 +112,6 @@ stdenv.mkDerivation (finalAttrs: {
         resolution=$(basename "$file" .png)
         install -Dm644 "$file" "$out/share/icons/hicolor/$resolution/apps/joplin.png"
       done
-
-      # makeWrapper $out/share/joplin-desktop/joplin $out/bin/joplin-desktop \
-      #   --add-flags "\''${NIXOS_OZONE_WL:+\''${WAYLAND_DISPLAY:+--ozone-platform=wayland --enable-features=WaylandWindowDecorations --enable-wayland-ime}}" \
-      #   --inherit-argv0
 
       makeWrapper ${lib.getExe electron} $out/bin/joplin-desktop \
         --add-flags $out/share/joplin-desktop/resources/app.asar \
