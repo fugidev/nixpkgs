@@ -4,7 +4,6 @@ import json
 import requests
 import tempfile
 import shutil
-import sys
 
 from pathlib import Path
 
@@ -14,7 +13,7 @@ HERE = Path(__file__).parent
 
 package = HERE.joinpath("package.nix")
 
-print("fetching latest release...", file=sys.stderr)
+print("fetching latest release...")
 
 latest = requests.get(
     "https://api.github.com/repos/laurent22/joplin/releases/latest"
@@ -25,9 +24,9 @@ release = {
     "version": version,
 }
 
-print(version, file=sys.stderr)
+print(version)
 
-print("prefetching source...", file=sys.stderr)
+print("prefetching source...")
 
 release["hash"] = nix_prefetch[
     "--option",
@@ -38,7 +37,7 @@ release["hash"] = nix_prefetch[
 
 print(release["hash"])
 
-print("updating yarn.lock...", file=sys.stderr)
+print("updating yarn.lock...")
 
 src_dir = nix_build[
     "--no-out-link",
@@ -59,7 +58,7 @@ with tempfile.TemporaryDirectory() as tmp_dir:
 
     shutil.copy(Path(tmp_dir).joinpath("yarn.lock"), HERE)
 
-print("fetching missing-hashes...", file=sys.stderr)
+print("fetching missing-hashes...")
 
 yarn_lock = HERE.joinpath("yarn.lock")
 missing_hashes = HERE.joinpath("missing-hashes.json")
@@ -71,7 +70,7 @@ with missing_hashes.open("w") as fd:
     ]()
     fd.write(new_missing_hashes)
 
-print("prefetching offline cache...", file=sys.stderr)
+print("prefetching offline cache...")
 
 release["deps_hash"] = yarn_berry_fetcher[
     "prefetch",
