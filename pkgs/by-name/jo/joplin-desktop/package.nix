@@ -14,7 +14,6 @@
   pixman,
   libsecret,
   electron,
-  # node-gyp,
 }:
 
 let
@@ -29,10 +28,12 @@ stdenv.mkDerivation (finalAttrs: {
     owner = "laurent22";
     repo = "joplin";
     tag = "v${finalAttrs.version}";
-    hash = "sha256-DDHUBtIjzeFL/iMaHDniOSLS3Y8Mwcp6BuHc+w/u8Ic=";
-    # postFetch = ''
-    #   rm -r $out/packages/{app-mobile,app-clipper,server,doc-builder,onenote-converter}
-    # '';
+    hash = "sha256-fAjeZk4xG4rzmxxLriG4Ofjmmany6KDSttqx4VpPWOI=";
+    postFetch = ''
+      # Remove not needed subpackages to reduce dependencies that need to be fetched/built
+      # and would require unneccessary complexity to fix.
+      rm -r $out/packages/{app-cli,app-clipper,app-mobile,doc-builder,onenote-converter,server}
+    '';
   };
 
   missingHashes = ./missing-hashes.json;
@@ -53,23 +54,25 @@ stdenv.mkDerivation (finalAttrs: {
     pixman
     libsecret
     makeWrapper
-    # node-gyp
   ]
   # ++ lib.optionals stdenv.hostPlatform.isDarwin [ xcbuild ]
   ++ lib.optionals stdenv.hostPlatform.isLinux [ copyDesktopItems ];
 
   env = {
-    YARN_ENABLE_SCRIPTS = 0;
     ELECTRON_SKIP_BINARY_DOWNLOAD = 1;
+    # Disable scripts for now, so that yarnBerryConfigHook does not try to build anything
+    # before we can patchShebangs additional paths (see buildPhase).
+    # https://github.com/NixOS/nixpkgs/blob/3cd051861c41df675cee20153bfd7befee120a98/pkgs/by-name/ya/yarn-berry/fetcher/yarn-berry-config-hook.sh#L83
+    YARN_ENABLE_SCRIPTS = 0;
   };
 
   postPatch = ''
-    rm -r packages/{app-mobile,app-clipper,app-cli,server,doc-builder,onenote-converter}
-    cp ${./yarn.lock} yarn.lock
-    sed -i "/'buildDefaultPlugins',/d" packages/app-desktop/gulpfile.ts
-    # Fix: Build error due to removal of app-mobile
+    # Add vendored lock file due to removed subpackages
+    cp ${./yarn.lock} ./yarn.lock
+    # Fix build error due to removal of app-mobile
     sed -i '/app-mobile\//d' packages/tools/gulp/tasks/buildScriptIndexes.js
-    # sed -i "s/jetify/true/" packages/app-mobile/package.json
+    # Don't build the default plugins, would require networking. We build them separately. (TODO)
+    sed -i "/'buildDefaultPlugins',/d" packages/app-desktop/gulpfile.ts
   '';
 
   buildPhase = ''
@@ -77,22 +80,16 @@ stdenv.mkDerivation (finalAttrs: {
 
     unset YARN_ENABLE_SCRIPTS
 
-    patchShebangs packages/app-desktop/node_modules
+    for node_modules in packages/*/node_modules; do
+      patchShebangs $node_modules
+    done
 
-    # yarn rebuild
     YARN_IGNORE_PATH=1 yarn install --inline-builds
 
-    yarn workspaces foreach \
-      --verbose \
-      --interlaced \
-      --topological \
-      --recursive \
-      --from @joplin/app-desktop \
-      run build
-    yarn tsc
-
     cd packages/app-desktop
+    # Fix for Linux build
     mkdir dist && touch dist/AppImage
+
     yarn run electron-builder \
       --dir \
       -c.electronDist="${electron.dist}" \
