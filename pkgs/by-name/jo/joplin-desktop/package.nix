@@ -25,6 +25,27 @@ stdenv.mkDerivation (finalAttrs: {
   pname = "joplin-desktop";
   inherit (releaseData) version;
 
+  meta = with lib; {
+    description = "Open source note taking and to-do application with synchronisation capabilities";
+    mainProgram = "joplin-desktop";
+    longDescription = ''
+      Joplin is a free, open source note taking and to-do application, which can
+      handle a large number of notes organised into notebooks. The notes are
+      searchable, can be copied, tagged and modified either from the
+      applications directly or from your own text editor. The notes are in
+      Markdown format.
+    '';
+    homepage = "https://joplinapp.org";
+    license = licenses.agpl3Plus;
+    maintainers = with maintainers; [
+      hugoreeves
+      qjoly
+      yajo
+      fugi
+    ];
+    inherit (electron.meta) platforms;
+  };
+
   passthru.updateScript = ./update.py;
 
   src = fetchFromGitHub {
