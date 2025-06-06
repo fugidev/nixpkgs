@@ -18,29 +18,32 @@
 
 let
   yarn-berry = yarn-berry_3;
+  releaseData = lib.importJSON ./release-data.json;
 in
 
 stdenv.mkDerivation (finalAttrs: {
   pname = "joplin-desktop";
-  version = "3.3.12";
+  inherit (releaseData) version;
+
+  passthru.updateScript = ./update.py;
 
   src = fetchFromGitHub {
     owner = "laurent22";
     repo = "joplin";
-    tag = "v${finalAttrs.version}";
-    hash = "sha256-fAjeZk4xG4rzmxxLriG4Ofjmmany6KDSttqx4VpPWOI=";
+    rev = "refs/tags/v${finalAttrs.version}";
     postFetch = ''
       # Remove not needed subpackages to reduce dependencies that need to be fetched/built
       # and would require unneccessary complexity to fix.
       rm -r $out/packages/{app-cli,app-clipper,app-mobile,doc-builder,onenote-converter,server}
     '';
+    inherit (releaseData) hash;
   };
 
   missingHashes = ./missing-hashes.json;
 
   offlineCache = yarn-berry.fetchYarnBerryDeps {
     inherit (finalAttrs) src missingHashes postPatch;
-    hash = "sha256-3THkd6uGr/813/m+QPOrye32QakSeWDHjBgZBz8RrYw=";
+    hash = releaseData.deps_hash;
   };
 
   nativeBuildInputs = [
