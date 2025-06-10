@@ -14,10 +14,13 @@
   pixman,
   libsecret,
   electron,
+  xcbuild,
+  buildPackages,
 }:
 
 let
   yarn-berry = yarn-berry_3;
+
   releaseData = lib.importJSON ./release-data.json;
 in
 
@@ -38,9 +41,6 @@ stdenv.mkDerivation (finalAttrs: {
     homepage = "https://joplinapp.org";
     license = licenses.agpl3Plus;
     maintainers = with maintainers; [
-      hugoreeves
-      qjoly
-      yajo
       fugi
     ];
     inherit (electron.meta) platforms;
@@ -79,8 +79,13 @@ stdenv.mkDerivation (finalAttrs: {
     libsecret
     makeWrapper
   ]
-  # ++ lib.optionals stdenv.hostPlatform.isDarwin [ xcbuild ]
-  ++ lib.optionals stdenv.hostPlatform.isLinux [ copyDesktopItems ];
+  ++ lib.optionals stdenv.hostPlatform.isDarwin [
+    xcbuild
+    buildPackages.cctools
+  ]
+  ++ lib.optionals stdenv.hostPlatform.isLinux [
+    copyDesktopItems
+  ];
 
   env = {
     ELECTRON_SKIP_BINARY_DOWNLOAD = 1;
@@ -108,16 +113,22 @@ stdenv.mkDerivation (finalAttrs: {
       patchShebangs $node_modules
     done
 
-    YARN_IGNORE_PATH=1 yarn install --inline-builds
+    yarn install --inline-builds
 
     cd packages/app-desktop
-    # Fix for Linux build
+
+    # file is expected to be present for Linux build
     mkdir dist && touch dist/AppImage
+
+    # electronDist needs to be modifiable on Darwin
+    cp -r ${electron.dist} electron-dist
+    chmod -R u+w electron-dist
 
     yarn run electron-builder \
       --dir \
-      -c.electronDist="${electron.dist}" \
-      -c.electronVersion=${electron.version}
+      -c.electronDist=electron-dist \
+      -c.electronVersion=${electron.version} \
+      -c.mac.identity=null
 
     runHook postBuild
   '';
@@ -138,6 +149,12 @@ stdenv.mkDerivation (finalAttrs: {
         --add-flags $out/share/joplin-desktop/resources/app.asar \
         --add-flags "\''${NIXOS_OZONE_WL:+\''${WAYLAND_DISPLAY:+--ozone-platform=wayland --enable-features=WaylandWindowDecorations --enable-wayland-ime}}" \
         --inherit-argv0
+    ''}
+
+    ${lib.optionalString stdenv.hostPlatform.isDarwin ''
+      mkdir -p $out/Applications
+      cp -r dist/mac*/Joplin.app $out/Applications
+      makeWrapper $out/Applications/Joplin.app/Contents/MacOS/Joplin $out/bin/joplin-desktop
     ''}
 
     runHook postInstall
