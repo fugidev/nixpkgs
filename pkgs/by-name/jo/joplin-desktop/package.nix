@@ -16,12 +16,50 @@
   electron,
   xcbuild,
   buildPackages,
+  buildNpmPackage,
+  importNpmLock,
+  fetchzip,
 }:
 
 let
   yarn-berry = yarn-berry_3;
 
   releaseData = lib.importJSON ./release-data.json;
+
+  buildPlugin = plugin:
+    let
+      src = fetchzip {
+        inherit (plugin) url hash;
+      };
+      package = lib.importJSON (src + "/package.json");
+    in
+      buildNpmPackage {
+        inherit src;
+        inherit (package) version;
+
+        pname = package.name;
+
+        # npmDeps = importNpmLock {
+        #   npmRoot = src;
+        # };
+        npmDepsHash = plugin.deps_hash;
+
+        # inherit (importNpmLock) npmConfigHook;
+
+        patches = plugin.patches or [];
+
+        npmFlags = [ "--legacy-peer-deps" ];
+
+        npmBuildScript = "dist";
+
+        installPhase = ''
+          runHook preInstall
+
+          install -Dm444 -t $out publish/*.jpl
+
+          runHook postInstall
+        '';
+      };
 in
 
 stdenv.mkDerivation (finalAttrs: {
@@ -63,6 +101,8 @@ stdenv.mkDerivation (finalAttrs: {
     '';
     inherit (releaseData) hash;
   };
+
+  defaultPlugins = builtins.mapAttrs (_: buildPlugin) releaseData.plugins;
 
   missingHashes = ./missing-hashes.json;
 

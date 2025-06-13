@@ -21,11 +21,12 @@ package = HERE.joinpath("package.nix")
 
 print("fetching latest release...")
 
-latest = requests.get(
-    "https://api.github.com/repos/laurent22/joplin/releases/latest"
-).json()
-tag = latest["tag_name"]
-version = tag[1:]
+# latest = requests.get(
+#     "https://api.github.com/repos/laurent22/joplin/releases/latest"
+# ).json()
+# tag = latest["tag_name"]
+# version = tag[1:]
+version = "3.3.12"
 release = {
     "version": version,
 }
@@ -56,6 +57,30 @@ src_dir = nix_build[
 ]().strip()
 
 print(src_dir)
+
+
+print("prefetching default plugins...")
+
+default_plugins_dir = Path(src_dir).joinpath("packages/default-plugins")
+
+with default_plugins_dir.joinpath("pluginRepositories.json").open() as fd:
+    plugin_repositories = json.load(fd)
+
+release["plugins"] = []
+
+for key, value in plugin_repositories.items():
+    plugin = dict()
+    plugin["id"] = key
+    plugin["url"] = f"{value["cloneUrl"].removesuffix('.git')}/archive/{value["commit"]}.tar.gz"
+    plugin["hash"] = nix_prefetch[
+        "--option",
+        "extra-experimental-features",
+        "flakes",
+        "fetchzip",
+        "--url",
+        plugin["url"]
+    ]().strip()
+    release["plugins"].append(plugin)
 
 
 print("updating yarn.lock...")
@@ -89,11 +114,11 @@ with missing_hashes.open("w") as fd:
 
 print("prefetching offline cache...")
 
-release["deps_hash"] = yarn_berry_fetcher[
-    "prefetch",
-    yarn_lock,
-    missing_hashes
-]().strip()
+# release["deps_hash"] = yarn_berry_fetcher[
+#     "prefetch",
+#     yarn_lock,
+#     missing_hashes
+# ]().strip()
 
 
 write_release(release)
