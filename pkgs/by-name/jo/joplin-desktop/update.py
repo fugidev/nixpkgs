@@ -11,7 +11,13 @@ from plumbum.cmd import nix_prefetch, nix_build, yarn, chmod, yarn_berry_fetcher
 
 HERE = Path(__file__).parent
 
+def write_release(release):
+    with HERE.joinpath("release-data.json").open("w") as fd:
+        json.dump(release, fd, indent=2)
+        fd.write("\n")
+
 package = HERE.joinpath("package.nix")
+
 
 print("fetching latest release...")
 
@@ -26,24 +32,33 @@ release = {
 
 print(version)
 
+
 print("prefetching source...")
 
 release["hash"] = nix_prefetch[
     "--option",
     "extra-experimental-features",
     "flakes",
+    "--rev",
+    f"refs/tags/v{version}",
     package
 ]().strip()
 
 print(release["hash"])
 
-print("updating yarn.lock...")
+# use new version and hash
+write_release(release)
 
 src_dir = nix_build[
     "--no-out-link",
     "-E",
     f"((import <nixpkgs> {{}}).callPackage {package} {{}}).src"
 ]().strip()
+
+print(src_dir)
+
+
+print("updating yarn.lock...")
 
 with tempfile.TemporaryDirectory() as tmp_dir:
     shutil.copytree(
@@ -58,6 +73,7 @@ with tempfile.TemporaryDirectory() as tmp_dir:
 
     shutil.copy(Path(tmp_dir).joinpath("yarn.lock"), HERE)
 
+
 print("fetching missing-hashes...")
 
 yarn_lock = HERE.joinpath("yarn.lock")
@@ -70,6 +86,7 @@ with missing_hashes.open("w") as fd:
     ]()
     fd.write(new_missing_hashes)
 
+
 print("prefetching offline cache...")
 
 release["deps_hash"] = yarn_berry_fetcher[
@@ -78,6 +95,5 @@ release["deps_hash"] = yarn_berry_fetcher[
     missing_hashes
 ]().strip()
 
-with HERE.joinpath("release-data.json").open("w") as fd:
-    json.dump(release, fd, indent=2)
-    fd.write("\n")
+
+write_release(release)
