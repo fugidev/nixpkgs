@@ -30,10 +30,10 @@ package = HERE.joinpath("package.nix")
 
 print("fetching latest release...")
 
-latest = requests.get(
-    "https://api.github.com/repos/laurent22/joplin/releases/latest"
+releases = requests.get(
+    "https://api.github.com/repos/laurent22/joplin/releases"
 ).json()
-tag = latest["tag_name"]
+tag = releases[0]["tag_name"]
 version = tag[1:]
 release = {
     "version": version,
